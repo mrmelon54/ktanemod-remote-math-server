@@ -45,6 +45,9 @@ func (r *RemoteMath) StartPinger() {
 					break
 				}
 				for _, i := range r.puzzles {
+					if i == nil {
+						continue
+					}
 					_ = i.modConn.WriteMessage(websocket.TextMessage, []byte("Ping"))
 					i.webConnLock.Lock()
 					for _, j := range i.webConns {
