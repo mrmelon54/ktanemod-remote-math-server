@@ -35,7 +35,9 @@ func (r *RemoteMath) Close() {
 	}
 	r.puzzleStop = true
 	for _, i := range r.puzzles {
-		go i.Kill()
+		if i != nil {
+			go i.Kill()
+		}
 	}
 }
 
@@ -133,8 +135,4 @@ func (r *RemoteMath) genPuzzleCode() string {
 		}
 	}
 	return c
-}
-
-func formatFruits() {
-
 }

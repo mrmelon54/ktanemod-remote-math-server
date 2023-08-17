@@ -80,13 +80,13 @@ func (s *Server) websocketHandler(c *websocket.Conn) {
 			switch string(message) {
 			case "blåhaj":
 				state = 1
+				_ = c.WriteMessage(websocket.TextMessage, []byte("ClientSelected"))
 				puzzle = s.rm.CreatePuzzle(c)
-				puzzle.SendMod("ClientSelected")
 				puzzle.SendMod("PuzzleCode::" + puzzle.code)
 				puzzle.SendMod("PuzzleLog::" + puzzle.date.Format(time.DateOnly) + "/" + puzzle.code)
 			case "rin":
 				state = 2
-				puzzle.SendMod("ClientSelected")
+				_ = c.WriteMessage(websocket.TextMessage, []byte("ClientSelected"))
 			}
 		case 1:
 			puzzle.RecvMod(string(message))
