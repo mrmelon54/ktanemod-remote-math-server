@@ -58,6 +58,19 @@ type Puzzle struct {
 	cText     [2]int
 }
 
+func NewPuzzle(conn *websocket.Conn) *Puzzle {
+	logRaw := new(bytes.Buffer)
+	return &Puzzle{
+		date:        time.Now(),
+		logRaw:      logRaw,
+		log:         log.New(logRaw, "", 0),
+		modConn:     conn,
+		webConnLock: new(sync.RWMutex),
+		webConns:    make([]*WebConn, 0),
+		killLock:    new(sync.RWMutex),
+	}
+}
+
 type WebConn struct {
 	conn   *websocket.Conn
 	tpDone bool

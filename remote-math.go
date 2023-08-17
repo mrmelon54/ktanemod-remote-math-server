@@ -1,14 +1,11 @@
 package ktanemod_remote_math_server
 
 import (
-	"bytes"
 	"fmt"
 	"github.com/gorilla/websocket"
-	"log"
 	"math/rand"
 	"regexp"
 	"sync"
-	"time"
 )
 
 var regPuzzleConnect = regexp.MustCompile("^PuzzleConnect::([A-Z]{6})$")
@@ -43,16 +40,8 @@ func (r *RemoteMath) Close() {
 }
 
 func (r *RemoteMath) CreatePuzzle(conn *websocket.Conn) *Puzzle {
-	logRaw := new(bytes.Buffer)
-	p := &Puzzle{
-		date:     time.Now(),
-		logRaw:   logRaw,
-		log:      log.New(logRaw, "", 0),
-		modConn:  conn,
-		webConns: make([]*WebConn, 0),
-		killLock: new(sync.RWMutex),
-		cText:    [2]int{r.rId.Intn(6), r.rId.Intn(6)},
-	}
+	p := NewPuzzle(conn)
+	p.cText = [2]int{r.rId.Intn(6), r.rId.Intn(6)}
 
 	// make sure puzzle code is only used once at a time
 	r.puzzleLock.Lock()
