@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"regexp"
 	"sync"
+	"time"
 )
 
 var regPuzzleConnect = regexp.MustCompile("^PuzzleConnect::([A-Z]{6})$")
@@ -17,14 +18,43 @@ type RemoteMath struct {
 	puzzleLock *sync.RWMutex
 	puzzles    map[string]*Puzzle
 	puzzleStop bool
+	pingStop   chan struct{}
 }
 
 func NewRemoteMath(random *rand.Rand) *RemoteMath {
-	return &RemoteMath{
+	r := &RemoteMath{
 		rId:        random,
 		puzzleLock: new(sync.RWMutex),
 		puzzles:    make(map[string]*Puzzle),
 	}
+	r.StartPinger()
+	return r
+}
+
+func (r *RemoteMath) StartPinger() {
+	go func() {
+		t := time.NewTicker(5 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-r.pingStop:
+				return
+			case <-t.C:
+				r.puzzleLock.Lock()
+				if r.puzzleStop {
+					break
+				}
+				for _, i := range r.puzzles {
+					_ = i.modConn.WriteMessage(websocket.TextMessage, []byte("Ping"))
+					i.webConnLock.Lock()
+					for _, j := range i.webConns {
+						_ = j.conn.WriteMessage(websocket.TextMessage, []byte("Ping"))
+					}
+				}
+				r.puzzleLock.Unlock()
+			}
+		}
+	}()
 }
 
 func (r *RemoteMath) Close() {
