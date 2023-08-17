@@ -23,7 +23,11 @@ type RemoteMath struct {
 }
 
 func NewRemoteMath(random *rand.Rand) *RemoteMath {
-	return &RemoteMath{rId: random}
+	return &RemoteMath{
+		rId:        random,
+		puzzleLock: new(sync.RWMutex),
+		puzzles:    make(map[string]*Puzzle),
+	}
 }
 
 func (r *RemoteMath) Close() {
@@ -47,7 +51,7 @@ func (r *RemoteMath) CreatePuzzle(conn *websocket.Conn) *Puzzle {
 		modConn:  conn,
 		webConns: make([]*WebConn, 0),
 		killLock: new(sync.RWMutex),
-		cText:    [2]int{r.rId.Intn(5), r.rId.Intn(5)},
+		cText:    [2]int{r.rId.Intn(6), r.rId.Intn(6)},
 	}
 
 	// make sure puzzle code is only used once at a time

@@ -32,8 +32,11 @@ func (s *Server) Run() {
 			s.websocketHandler(c)
 			return
 		}
+		rw.WriteHeader(http.StatusOK)
+		_, _ = rw.Write([]byte("What is a \"Remote Math\" anyway?\n"))
 	})
 	srv := &http.Server{Addr: s.Listen, Handler: r}
+	log.Printf("[RemoteMath] Hosting Remote Math on '%s'\n", srv.Addr)
 	go func() {
 		err := srv.ListenAndServe()
 		if err != nil {
