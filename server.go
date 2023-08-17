@@ -23,7 +23,8 @@ func (s *Server) Run() {
 
 	r := http.NewServeMux()
 	r.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
-		if isWebsocketRequest(req) {
+		if websocket.IsWebSocketUpgrade(req) {
+			log.Printf("[Websocket] Upgrading connection by '%s' from '%s'\n", req.RemoteAddr, req.Header.Get("Origin"))
 			c, err := upgrader.Upgrade(rw, req, nil)
 			if err != nil {
 				log.Println("[Websocket] Upgrade error: ", err)
@@ -68,6 +69,7 @@ func (s *Server) websocketHandler(c *websocket.Conn) {
 	for {
 		mt, message, err := c.ReadMessage()
 		if err != nil {
+			log.Println("[Websocket] Read message error: ", err)
 			break
 		}
 		if mt != websocket.TextMessage {
@@ -105,8 +107,4 @@ func (s *Server) websocketHandler(c *websocket.Conn) {
 	case 3:
 		puzzle.RemoveWebConn(c)
 	}
-}
-
-func isWebsocketRequest(req *http.Request) bool {
-	return req.Header.Get("Connection") == "upgrade" && req.Header.Get("Upgrade") == "websocket"
 }
