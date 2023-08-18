@@ -4,17 +4,18 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/gorilla/websocket"
+	"io"
 	"log"
 	"math"
+	"os"
 	"regexp"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 )
 
 var (
-	regPuzzleSolution           = regexp.MustCompile("^PuzzleSolution::([0-9]+)::([0-9]+)::([0-9−+÷×=]+)::([0-5])$")
+	regPuzzleSolution           = regexp.MustCompile("^PuzzleSolution::([0-9]+)::([0-9]+)::([0-9-+/*=]+)::([0-5])$")
 	regPuzzleTwitchPlaysMode    = regexp.MustCompile("^PuzzleTwitchPlaysMode::([0-9]+)$")
 	regPuzzleActivateTwitchCode = regexp.MustCompile("^PuzzleActivateTwitchCode::([0-9]{3})$")
 	regPuzzleFruits             = regexp.MustCompile("^PuzzleFruits::([0-5])::([0-5])::([0-5])::([0-5])::([0-5])::([0-5])::([0-5])::([0-5])$")
@@ -31,12 +32,6 @@ var (
 		{44, 61, 20, 92, 13, 4},
 		{34, 50, 87, 22, 54, 19},
 	}
-)
-
-// these constants are to prevent confusion with other symbols in the source code
-const (
-	specialDash  = "\xe2\x88\x92"
-	specialTimes = "\xc3\x97"
 )
 
 type Puzzle struct {
@@ -58,12 +53,18 @@ type Puzzle struct {
 	cText     [2]int
 }
 
-func NewPuzzle(conn *websocket.Conn) *Puzzle {
+func NewPuzzle(conn *websocket.Conn, debug bool) *Puzzle {
 	logRaw := new(bytes.Buffer)
+	var logOut io.Writer
+	if debug {
+		logOut = io.MultiWriter(logRaw, log.New(os.Stderr, "DebugPuzzle", 0).Writer())
+	} else {
+		logOut = logRaw
+	}
 	return &Puzzle{
 		date:        time.Now(),
 		logRaw:      logRaw,
-		log:         log.New(logRaw, "", 0),
+		log:         log.New(logOut, "", 0),
 		modConn:     conn,
 		webConnLock: new(sync.RWMutex),
 		webConns:    make([]*WebConn, 0),
@@ -126,16 +127,20 @@ func (p *Puzzle) checkSolution(sln []string) bool {
 	var s3a string
 	var s3b int
 	if p.batteries > 5 {
-		s3a = fmt.Sprintf("%d+%d%s%d=", s1c+s2c, f1, specialDash, f2)
+		s3a = fmt.Sprintf("%d+%d-%d=", s1c+s2c, f1, f2)
 		s3b = s1c + s2c + (f1 - f2)
 	} else {
-		s3a = fmt.Sprintf("%d+%d%s%d=", s1c+s2c, f1, specialTimes, f2)
+		s3a = fmt.Sprintf("%d+%d*%d=", s1c+s2c, f1, f2)
 		s3b = s1c + s2c + (f1 * f2)
 	}
-	s3c := s3a + strings.ReplaceAll(strconv.Itoa(s3b), "-", specialDash)
+	s3c := s3a + strconv.Itoa(s3b)
 
 	// Step 4
 	s4a := slnn[3] == p.cText[0] || slnn[3] == p.cText[1]
+
+	p.log.Printf("  s1: %s - %s - %s\n", s1a, s1b, s1c)
+	p.log.Printf("  s2: %s - %s - %s\n", s2a, s2b, s2c)
+	p.log.Printf("  s3: %s - %s - %s\n", s3a, s3b, s3c)
 
 	p.log.Println("Correct Answers:")
 	p.log.Printf("  Step 1: %d\n", s1c)
@@ -231,7 +236,10 @@ func (p *Puzzle) RecvMod(s string) {
 		p.ports = mustParseInt(submatch[2])
 		p.log.Printf("Batteries: %d\n", p.batteries)
 		p.log.Printf("Ports: %d\n", p.ports)
+		return
 	}
+
+	log.Printf("Unknown packet '%s' from module\n", s)
 }
 
 func (p *Puzzle) SendWebConns(s string) {
@@ -255,12 +263,16 @@ func (p *Puzzle) RecvWebConn(s string) {
 			p.SendMod("PuzzleComplete")
 			p.SendWebConns("PuzzleComplete")
 
-			// this triggers Kill later
-			_ = p.modConn.Close()
+			go func() {
+				// force close module connection after 5 seconds
+				<-time.After(5 * time.Second)
+				_ = p.modConn.Close()
+			}()
 		}
 		return
 	}
 
+	log.Printf("Unknown packet '%s' from web client\n", s)
 }
 
 func (p *Puzzle) RemoveWebConn(c *websocket.Conn) {

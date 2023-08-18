@@ -1,25 +1,40 @@
 package ktanemod_remote_math_server
 
 import (
+	"context"
 	"errors"
 	exitReload "github.com/MrMelon54/exit-reload"
 	"github.com/gorilla/websocket"
 	"log"
 	"math/rand"
 	"net/http"
+	"sync"
 	"time"
 )
 
-var upgrader = websocket.Upgrader{}
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(req *http.Request) bool {
+		h := req.URL.Hostname()
+		return h == "remote-math.mrmelon54.com" || h == "localhost" || h == "127.0.0.1" || h == ""
+	},
+}
 
 type Server struct {
-	Listen string
-	rm     *RemoteMath
+	Listen      string
+	DebugPuzzle bool
+	rm          *RemoteMath
+	mLock       *sync.RWMutex
+	m           map[string]*websocket.Conn
+	pingStop    chan struct{}
 }
 
 func (s *Server) Run() {
 	random := rand.New(rand.NewSource(time.Now().UnixNano()))
-	s.rm = NewRemoteMath(random)
+	s.rm = NewRemoteMath(random, s.DebugPuzzle)
+	s.mLock = new(sync.RWMutex)
+	s.m = make(map[string]*websocket.Conn)
+	s.pingStop = make(chan struct{})
+	s.StartPinger()
 
 	r := http.NewServeMux()
 	r.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
@@ -30,7 +45,10 @@ func (s *Server) Run() {
 				log.Println("[Websocket] Upgrade error: ", err)
 				return
 			}
-			s.websocketHandler(c)
+			s.mLock.Lock()
+			s.m[c.RemoteAddr().String()] = c
+			s.mLock.Unlock()
+			go s.websocketHandler(c)
 			return
 		}
 		rw.WriteHeader(http.StatusOK)
@@ -49,21 +67,58 @@ func (s *Server) Run() {
 		}
 	}()
 	exitReload.ExitReload("RemoteMath", func() {}, func() {
-		_ = srv.Close()
+		close(s.pingStop)
 		s.rm.Close()
+		_ = srv.Shutdown(context.Background())
 	})
 }
 
-func (s *Server) websocketHandler(c *websocket.Conn) {
-	defer c.Close()
+func (s *Server) StartPinger() {
+	go func() {
+		t := time.NewTicker(5 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-s.pingStop:
+				return
+			case <-t.C:
+				s.mLock.Lock()
+				for _, v := range s.m {
+					if v == nil {
+						continue
+					}
+					_ = v.WriteMessage(websocket.TextMessage, []byte("ping"))
+				}
+				s.mLock.Unlock()
+			}
+		}
+	}()
+}
 
-	// state value
-	//
-	//   0 = new connection
-	//   1 = module client
-	//   2 = web client pre-connect
-	//   3 = web client post-connect
-	var state int
+// State value
+//
+//   0 = new connection
+//   1 = module client
+//   2 = web client pre-connect
+//   3 = web client post-connect
+type State byte
+
+const (
+	NewConnection State = iota
+	ModuleClient
+	WebClientPreConnect
+	WebClientPostConnect
+)
+
+func (s *Server) websocketHandler(c *websocket.Conn) {
+	defer func() {
+		s.mLock.Lock()
+		delete(s.m, c.RemoteAddr().String())
+		s.mLock.Unlock()
+		_ = c.Close()
+	}()
+
+	var state = NewConnection
 	var puzzle *Puzzle
 
 	for {
@@ -76,28 +131,40 @@ func (s *Server) websocketHandler(c *websocket.Conn) {
 			break
 		}
 		switch state {
-		case 0:
+		case NewConnection:
+			if string(message) == "pong" {
+				break
+			}
 			switch string(message) {
 			case "blåhaj":
-				state = 1
+				state = ModuleClient
 				_ = c.WriteMessage(websocket.TextMessage, []byte("ClientSelected"))
 				puzzle = s.rm.CreatePuzzle(c)
 				puzzle.SendMod("PuzzleCode::" + puzzle.code)
 				puzzle.SendMod("PuzzleLog::" + puzzle.date.Format(time.DateOnly) + "/" + puzzle.code)
 			case "rin":
-				state = 2
+				state = WebClientPreConnect
 				_ = c.WriteMessage(websocket.TextMessage, []byte("ClientSelected"))
 			}
-		case 1:
+		case ModuleClient:
+			if string(message) == "pong" {
+				break
+			}
 			puzzle.RecvMod(string(message))
-		case 2:
+		case WebClientPreConnect:
+			if string(message) == "pong" {
+				break
+			}
 			puzzle = s.rm.ConnectPuzzle(c, string(message))
 			if puzzle == nil {
 				_ = c.Close()
 				return
 			}
-			state = 3
-		case 3:
+			state = WebClientPostConnect
+		case WebClientPostConnect:
+			if string(message) == "pong" {
+				break
+			}
 			puzzle.RecvWebConn(string(message))
 		}
 	}

@@ -5,11 +5,11 @@ import (
 	"github.com/gorilla/websocket"
 	"math/rand"
 	"regexp"
+	"strings"
 	"sync"
-	"time"
 )
 
-var regPuzzleConnect = regexp.MustCompile("^PuzzleConnect::([A-Z]{6})$")
+var regPuzzleConnect = regexp.MustCompile("^PuzzleConnect::([a-zA-Z]{6})$")
 
 const idBytes = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
@@ -17,47 +17,20 @@ type RemoteMath struct {
 	rId        *rand.Rand
 	puzzleLock *sync.RWMutex
 	puzzles    map[string]*Puzzle
+	respawn    map[string]*Puzzle
 	puzzleStop bool
 	pingStop   chan struct{}
+	debug      bool
 }
 
-func NewRemoteMath(random *rand.Rand) *RemoteMath {
+func NewRemoteMath(random *rand.Rand, debug bool) *RemoteMath {
 	r := &RemoteMath{
 		rId:        random,
 		puzzleLock: new(sync.RWMutex),
 		puzzles:    make(map[string]*Puzzle),
+		debug:      debug,
 	}
-	r.StartPinger()
 	return r
-}
-
-func (r *RemoteMath) StartPinger() {
-	go func() {
-		t := time.NewTicker(5 * time.Second)
-		defer t.Stop()
-		for {
-			select {
-			case <-r.pingStop:
-				return
-			case <-t.C:
-				r.puzzleLock.Lock()
-				if r.puzzleStop {
-					break
-				}
-				for _, i := range r.puzzles {
-					if i == nil {
-						continue
-					}
-					_ = i.modConn.WriteMessage(websocket.TextMessage, []byte("Ping"))
-					i.webConnLock.Lock()
-					for _, j := range i.webConns {
-						_ = j.conn.WriteMessage(websocket.TextMessage, []byte("Ping"))
-					}
-				}
-				r.puzzleLock.Unlock()
-			}
-		}
-	}()
 }
 
 func (r *RemoteMath) Close() {
@@ -75,7 +48,7 @@ func (r *RemoteMath) Close() {
 }
 
 func (r *RemoteMath) CreatePuzzle(conn *websocket.Conn) *Puzzle {
-	p := NewPuzzle(conn)
+	p := NewPuzzle(conn, r.debug)
 	p.cText = [2]int{r.rId.Intn(6), r.rId.Intn(6)}
 
 	// make sure puzzle code is only used once at a time
@@ -113,8 +86,10 @@ func (r *RemoteMath) ConnectPuzzle(c *websocket.Conn, s string) *Puzzle {
 		return nil
 	}
 
+	code := strings.ToUpper(match[1])
+
 	// get puzzle
-	p := r.puzzles[match[1]]
+	p := r.puzzles[code]
 	if p == nil {
 		return nil
 	}
@@ -147,7 +122,7 @@ func (r *RemoteMath) ConnectPuzzle(c *websocket.Conn, s string) *Puzzle {
 	p.webConnLock.Unlock()
 
 	_ = c.WriteMessage(websocket.TextMessage, []byte("PuzzleConnected"))
-	_ = c.WriteMessage(websocket.TextMessage, []byte("PuzzleFruits::"+fmt.Sprintf("%d::%d::%d::%d", p.fruits[0], p.fruits[1], p.fruits[2], p.fruits[3])))
+	_ = c.WriteMessage(websocket.TextMessage, []byte("PuzzleFruits::"+fmt.Sprintf("%d::%d::%d::%d", p.fruits[4], p.fruits[5], p.fruits[6], p.fruits[7])))
 	_ = c.WriteMessage(websocket.TextMessage, []byte("PuzzleFruitText::"+fmt.Sprintf("%d::%d", p.cText[0], p.cText[1])))
 	if tpCode != "" {
 		p.SendMod("PuzzleTwitchCode::" + tpCode)
