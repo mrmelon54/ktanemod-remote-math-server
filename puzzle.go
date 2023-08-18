@@ -278,6 +278,9 @@ func (p *Puzzle) RecvWebConn(s string) {
 func (p *Puzzle) RemoveWebConn(c *websocket.Conn) {
 	p.webConnLock.Lock()
 	for i := range p.webConns {
+		if i >= len(p.webConns) {
+			break
+		}
 		if p.webConns[i].conn == c {
 			l := len(p.webConns)
 			p.webConns[i] = p.webConns[l-1]
