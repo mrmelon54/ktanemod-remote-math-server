@@ -21,6 +21,7 @@ var upgrader = websocket.Upgrader{
 
 type Server struct {
 	Listen      string
+	LogDir      string
 	DebugPuzzle bool
 	rm          *RemoteMath
 	mLock       *sync.RWMutex
@@ -30,7 +31,7 @@ type Server struct {
 
 func (s *Server) Run() {
 	random := rand.New(rand.NewSource(time.Now().UnixNano()))
-	s.rm = NewRemoteMath(random, s.DebugPuzzle)
+	s.rm = NewRemoteMath(random, s.LogDir, s.DebugPuzzle)
 	s.mLock = new(sync.RWMutex)
 	s.m = make(map[string]*websocket.Conn)
 	s.pingStop = make(chan struct{})

@@ -3,10 +3,14 @@ package ktanemod_remote_math_server
 import (
 	"fmt"
 	"github.com/gorilla/websocket"
+	"log"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 )
 
 var regPuzzleConnect = regexp.MustCompile("^PuzzleConnect::([a-zA-Z]{6})$")
@@ -21,14 +25,16 @@ type RemoteMath struct {
 	puzzleStop bool
 	pingStop   chan struct{}
 	debug      bool
+	logDir     string
 }
 
-func NewRemoteMath(random *rand.Rand, debug bool) *RemoteMath {
+func NewRemoteMath(random *rand.Rand, logDir string, debug bool) *RemoteMath {
 	r := &RemoteMath{
 		rId:        random,
 		puzzleLock: new(sync.RWMutex),
 		puzzles:    make(map[string]*Puzzle),
 		debug:      debug,
+		logDir:     logDir,
 	}
 	return r
 }
@@ -42,6 +48,7 @@ func (r *RemoteMath) Close() {
 	r.puzzleStop = true
 	for _, i := range r.puzzles {
 		if i != nil {
+			i.log.Println("Server shutdown")
 			go i.Kill()
 		}
 	}
@@ -73,6 +80,27 @@ func (r *RemoteMath) ClosePuzzle(puzzle *Puzzle) {
 	r.puzzles[puzzle.code] = nil
 	r.puzzleLock.Unlock()
 	puzzle.Kill()
+
+	// now the puzzle is finished, save the log
+	if puzzle.saveLog.Load() {
+		logPath := filepath.Join(r.logDir, puzzle.date.Format(time.DateOnly))
+		err := os.Mkdir(logPath, os.ModePerm)
+		if err != nil {
+			log.Printf("[RemoteMath] Failed to create log directory '%s'\n", logPath)
+			return
+		}
+		logFile := filepath.Join(logPath, puzzle.code+".log")
+		create, err := os.Create(logFile)
+		if err != nil {
+			log.Printf("[RemoteMath] Failed to create log file '%s'\n", logFile)
+			return
+		}
+		_, err = puzzle.logRaw.WriteTo(create)
+		if err != nil {
+			log.Printf("[RemoteMath] Failed to write log file '%s'\n", logFile)
+			return
+		}
+	}
 }
 
 func (r *RemoteMath) ConnectPuzzle(c *websocket.Conn, s string) *Puzzle {

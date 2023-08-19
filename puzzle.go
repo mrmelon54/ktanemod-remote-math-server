@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -37,6 +38,7 @@ var (
 type Puzzle struct {
 	code        string
 	date        time.Time
+	saveLog     *atomic.Bool
 	logRaw      *bytes.Buffer
 	log         *log.Logger
 	modConn     *websocket.Conn
@@ -44,8 +46,7 @@ type Puzzle struct {
 	webConns    []*WebConn
 	twitchPlays bool
 	twitchId    string
-	killLock    *sync.RWMutex
-	killed      bool
+	killed      *atomic.Bool
 
 	batteries int
 	ports     int
@@ -63,12 +64,13 @@ func NewPuzzle(conn *websocket.Conn, debug bool) *Puzzle {
 	}
 	return &Puzzle{
 		date:        time.Now(),
+		saveLog:     new(atomic.Bool),
 		logRaw:      logRaw,
 		log:         log.New(logOut, "", 0),
 		modConn:     conn,
 		webConnLock: new(sync.RWMutex),
 		webConns:    make([]*WebConn, 0),
-		killLock:    new(sync.RWMutex),
+		killed:      new(atomic.Bool),
 	}
 }
 
@@ -160,9 +162,7 @@ func (p *Puzzle) CheckSolution(sln []string) bool {
 }
 
 func (p *Puzzle) checkKilled() bool {
-	p.killLock.RLock()
-	defer p.killLock.RUnlock()
-	return p.killed
+	return p.killed.Load()
 }
 
 func (p *Puzzle) SendMod(s string) {
@@ -248,6 +248,9 @@ func (p *Puzzle) SendWebConns(s string) {
 func (p *Puzzle) RecvWebConn(s string) {
 	submatch := regPuzzleSolution.FindStringSubmatch(s)
 	if submatch != nil {
+		// log will only save after first solution check
+		p.saveLog.Store(true)
+
 		if p.CheckSolution(submatch) {
 			p.log.Println("Correct solution")
 			p.SendMod("PuzzleLog::CorrectSolution")
@@ -286,9 +289,7 @@ func (p *Puzzle) Kill() {
 	if p.checkKilled() {
 		return
 	}
-	p.killLock.Lock()
-	p.killed = true
-	p.killLock.Unlock()
+	p.killed.Store(true)
 	_ = p.modConn.Close()
 	p.webConnLock.RLock()
 	for _, i := range p.webConns {
