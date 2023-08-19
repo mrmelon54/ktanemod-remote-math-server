@@ -5,9 +5,13 @@ import (
 	"errors"
 	exitReload "github.com/MrMelon54/exit-reload"
 	"github.com/gorilla/websocket"
+	"github.com/julienschmidt/httprouter"
 	"log"
 	"math/rand"
 	"net/http"
+	"path/filepath"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 )
@@ -18,6 +22,9 @@ var upgrader = websocket.Upgrader{
 		return h == "remote-math.mrmelon54.com" || h == "localhost" || h == "127.0.0.1" || h == ""
 	},
 }
+
+var regLogDate = regexp.MustCompile("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+var regLogCode = regexp.MustCompile("^[a-zA-Z]{6}\\.log$")
 
 type Server struct {
 	Listen      string
@@ -37,8 +44,12 @@ func (s *Server) Run() {
 	s.pingStop = make(chan struct{})
 	s.StartPinger()
 
-	r := http.NewServeMux()
-	r.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
+	r := httprouter.New()
+	r.GET("/", func(rw http.ResponseWriter, req *http.Request, params httprouter.Params) {
+		rw.WriteHeader(http.StatusOK)
+		_, _ = rw.Write([]byte("What is a \"Remote Math\" anyway?\n"))
+	})
+	r.Handle(http.MethodConnect, "/", func(rw http.ResponseWriter, req *http.Request, params httprouter.Params) {
 		if websocket.IsWebSocketUpgrade(req) {
 			log.Printf("[Websocket] Upgrading connection by '%s' from '%s'\n", req.RemoteAddr, req.Header.Get("Origin"))
 			c, err := upgrader.Upgrade(rw, req, nil)
@@ -55,6 +66,22 @@ func (s *Server) Run() {
 		rw.WriteHeader(http.StatusOK)
 		_, _ = rw.Write([]byte("What is a \"Remote Math\" anyway?\n"))
 	})
+	r.GET("/log/:date/:code", func(rw http.ResponseWriter, req *http.Request, params httprouter.Params) {
+		date := params.ByName("date")
+		code := params.ByName("code")
+		if !regLogDate.MatchString(date) || !regLogCode.MatchString(code) {
+			rw.WriteHeader(http.StatusNotFound)
+			return
+		}
+		logFile := filepath.Join(s.LogDir, date, strings.ToUpper(code[0:6])+".log")
+		if strings.Contains(logFile, "..") || !strings.HasPrefix(logFile, s.LogDir) {
+			rw.WriteHeader(http.StatusNotFound)
+			return
+		}
+		http.ServeFile(rw, req, logFile)
+	})
+
+	// setup http listener
 	srv := &http.Server{Addr: s.Listen, Handler: r}
 	log.Printf("[RemoteMath] Hosting Remote Math on '%s'\n", srv.Addr)
 	go func() {
@@ -142,7 +169,7 @@ func (s *Server) websocketHandler(c *websocket.Conn) {
 				_ = c.WriteMessage(websocket.TextMessage, []byte("ClientSelected"))
 				puzzle = s.rm.CreatePuzzle(c)
 				puzzle.SendMod("PuzzleCode::" + puzzle.code)
-				puzzle.SendMod("PuzzleLog::" + puzzle.date.Format(time.DateOnly) + "/" + puzzle.code)
+				puzzle.SendMod("PuzzleLog::LogFile/" + puzzle.date.Format(time.DateOnly) + "/" + puzzle.code)
 			case "rin":
 				state = WebClientPreConnect
 				_ = c.WriteMessage(websocket.TextMessage, []byte("ClientSelected"))
