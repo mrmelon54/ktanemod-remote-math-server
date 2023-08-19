@@ -101,7 +101,7 @@ func (r *RemoteMath) ConnectPuzzle(c *websocket.Conn, s string) *Puzzle {
 	if p.twitchPlays {
 	outer:
 		for {
-			tpCode = makeId(r.rId, 3, "0123456789")
+			tpCode = MakeId(r.rId, 3, "0123456789")
 			for _, i := range p.webConns {
 				if i.tpCode == tpCode {
 					// skip inner loop as the code already exists
@@ -137,7 +137,7 @@ func (r *RemoteMath) ConnectPuzzle(c *websocket.Conn, s string) *Puzzle {
 func (r *RemoteMath) genPuzzleCode() string {
 	var c string
 	for {
-		c = makeId(r.rId, 6, idBytes)
+		c = MakeId(r.rId, 6, idBytes)
 		if _, exists := r.puzzles[c]; !exists {
 			break
 		}

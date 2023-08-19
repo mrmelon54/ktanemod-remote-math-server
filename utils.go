@@ -5,11 +5,12 @@ import (
 	"strings"
 )
 
-func makeId(r *rand.Rand, l int, chars string) string {
+func MakeId(r *rand.Rand, l int, chars string) string {
 	var s strings.Builder
 	s.Grow(l)
 	for i := 0; i < l; i++ {
-		s.WriteByte(chars[r.Intn(len(chars))])
+		b := r.Intn(len(chars))
+		s.WriteByte(chars[b])
 	}
 	return s.String()
 }

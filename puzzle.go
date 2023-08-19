@@ -78,13 +78,11 @@ type WebConn struct {
 	tpCode string
 }
 
-func (p *Puzzle) checkSolution(sln []string) bool {
-	slnn := [4]int{
-		mustParseInt(sln[1]),
-		mustParseInt(sln[2]),
-		0,
-		mustParseInt(sln[4]),
-	}
+func (p *Puzzle) CheckSolution(sln []string) bool {
+	sln1 := mustParseInt(sln[1])
+	sln2 := mustParseInt(sln[2])
+	sln3 := sln[3]
+	sln4 := mustParseInt(sln[4])
 	// Solution :: [1] Left fruit :: [2] Right fruit :: [3] Display content :: [4] Status light colour
 	// Fruit numbers
 	/* f1 = defuser's top
@@ -93,70 +91,64 @@ func (p *Puzzle) checkSolution(sln []string) bool {
 	 * f4 = expert's right
 	 */
 
-	f1 := fruitNumbers[p.fruits[0]][p.fruits[2]]
-	f2 := fruitNumbers[p.fruits[1]][p.fruits[3]]
-	f3 := fruitNumbers[p.fruits[4]][p.fruits[6]]
-	f4 := fruitNumbers[p.fruits[5]][p.fruits[7]]
+	f1 := fruitNumbers[p.fruits[0]][p.fruits[2]] // top defuser
+	f2 := fruitNumbers[p.fruits[1]][p.fruits[3]] // right defuser
+	f3 := fruitNumbers[p.fruits[4]][p.fruits[6]] // left expert
+	f4 := fruitNumbers[p.fruits[5]][p.fruits[7]] // right expert
 
 	_ = f3 // I used the variable now lol
 
 	// Step 1
-	s1a1 := 0
+	s1f := float64(f1 * 13)
 	if p.fruits[0] == p.fruits[2] {
-		s1a1 = 21
+		s1f += 21
 	}
-	s1a := f1*13 + s1a1 - p.ports
-	s1b := int(math.Abs(math.Floor(float64(s1a) / float64(f4))))
-	s1c := s1b % 20
+	s1f -= float64(p.ports)
+	s1f /= float64(f4)
+	s1int := int(math.Abs(s1f))
+	s1int %= 20
 
 	// Step 2
-	s2a1 := 0
+	s2f := float64(f4 * f2)
 	if p.fruits[4] == p.fruits[6] && p.fruits[5] == p.fruits[7] {
-		s2a1 = 54
+		s2f -= 54
 	}
-	s2a := f4*f2 - s2a1
-	var s2b int
 	if p.batteries != 0 {
-		s2b = int(math.Abs(math.Floor(float64(s2a) / float64(p.batteries))))
-	} else {
-		s2b = int(math.Abs(math.Floor(float64(s2a))))
+		s2f /= float64(p.batteries)
 	}
-	s2c := (s2b % 20) + 5
+	s2int := int(math.Abs(s2f))
+	s2int %= 20
+	s2int += 5
 
 	// Step 3
-	var s3a string
-	var s3b int
+	s3a := s1int + s2int
+	s3b := f1
+	s3c := f2
+	var s3d int
+	var s3str string
 	if p.batteries > 5 {
-		s3a = fmt.Sprintf("%d+%d-%d=", s1c+s2c, f1, f2)
-		s3b = s1c + s2c + (f1 - f2)
+		s3d = s3a + s3b - s3c
+		s3str = fmt.Sprintf("%d+%d-%d=%d", s3a, s3b, s3c, s3d)
 	} else {
-		s3a = fmt.Sprintf("%d+%d*%d=", s1c+s2c, f1, f2)
-		s3b = s1c + s2c + (f1 * f2)
+		s3d = s3a + s3b*s3c
+		s3str = fmt.Sprintf("%d+%d*%d=%d", s3a, s3b, s3c, s3d)
 	}
-	s3c := s3a + strconv.Itoa(s3b)
-
-	// Step 4
-	s4a := slnn[3] == p.cText[0] || slnn[3] == p.cText[1]
-
-	p.log.Printf("  s1: %s - %s - %s\n", s1a, s1b, s1c)
-	p.log.Printf("  s2: %s - %s - %s\n", s2a, s2b, s2c)
-	p.log.Printf("  s3: %s - %s - %s\n", s3a, s3b, s3c)
 
 	p.log.Println("Correct Answers:")
-	p.log.Printf("  Step 1: %d\n", s1c)
-	p.log.Printf("  Step 2: %d\n", s2c)
-	p.log.Printf("  Step 3: %s\n", s3c)
+	p.log.Printf("  Step 1: %d\n", s1int)
+	p.log.Printf("  Step 2: %d\n", s2int)
+	p.log.Printf("  Step 3: %s\n", s3str)
 	p.log.Printf("  Step 4: %d or %d\n", p.cText[0], p.cText[1])
 	p.log.Println("Your Answers:")
-	p.log.Printf("  Step 1: %d\n", sln[1])
-	p.log.Printf("  Step 2: %d\n", sln[2])
-	p.log.Printf("  Step 3: %d\n", sln[3])
-	p.log.Printf("  Step 4: %d\n", sln[4])
+	p.log.Printf("  Step 1: %d\n", sln1)
+	p.log.Printf("  Step 2: %d\n", sln2)
+	p.log.Printf("  Step 3: %s\n", sln3)
+	p.log.Printf("  Step 4: %d\n", sln4)
 
-	c1 := s1c == slnn[0]
-	c2 := s2c == slnn[1]
-	c3 := s3c == sln[3]
-	c4 := s4a
+	c1 := s1int == sln1
+	c2 := s2int == sln2
+	c3 := s3str == sln3
+	c4 := sln4 == p.cText[0] || sln4 == p.cText[1]
 
 	p.log.Println("Checking Answers:")
 	p.log.Printf("  Step 1: %v\n", c1)
@@ -256,7 +248,7 @@ func (p *Puzzle) SendWebConns(s string) {
 func (p *Puzzle) RecvWebConn(s string) {
 	submatch := regPuzzleSolution.FindStringSubmatch(s)
 	if submatch != nil {
-		if p.checkSolution(submatch) {
+		if p.CheckSolution(submatch) {
 			p.log.Println("Correct solution")
 			p.SendMod("PuzzleLog::CorrectSolution")
 			p.log.Println("Sending solve")
