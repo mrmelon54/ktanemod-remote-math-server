@@ -85,19 +85,19 @@ func (r *RemoteMath) ClosePuzzle(puzzle *Puzzle) {
 	if puzzle.saveLog.Load() {
 		logPath := filepath.Join(r.logDir, puzzle.date.Format(time.DateOnly))
 		err := os.Mkdir(logPath, os.ModePerm)
-		if err != nil {
-			log.Printf("[RemoteMath] Failed to create log directory '%s'\n", logPath)
+		if err != nil && !os.IsExist(err) {
+			log.Printf("[RemoteMath] Failed to create log directory '%s': %s\n", logPath, err)
 			return
 		}
 		logFile := filepath.Join(logPath, puzzle.code+".log")
 		create, err := os.Create(logFile)
 		if err != nil {
-			log.Printf("[RemoteMath] Failed to create log file '%s'\n", logFile)
+			log.Printf("[RemoteMath] Failed to create log file '%s': %s\n", logFile, err)
 			return
 		}
 		_, err = puzzle.logRaw.WriteTo(create)
 		if err != nil {
-			log.Printf("[RemoteMath] Failed to write log file '%s'\n", logFile)
+			log.Printf("[RemoteMath] Failed to write log file '%s': %s\n", logFile, err)
 			return
 		}
 	}
