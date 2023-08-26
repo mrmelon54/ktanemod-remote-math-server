@@ -5,7 +5,6 @@ import (
 	"errors"
 	exitReload "github.com/MrMelon54/exit-reload"
 	"github.com/gorilla/websocket"
-	"github.com/julienschmidt/httprouter"
 	"log"
 	"math/rand"
 	"net/http"
@@ -24,7 +23,7 @@ var upgrader = websocket.Upgrader{
 }
 
 var regLogDate = regexp.MustCompile("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
-var regLogCode = regexp.MustCompile("^[a-zA-Z]{6}\\.log$")
+var regLogCode = regexp.MustCompile("^[a-zA-Z]{6}$")
 
 type Server struct {
 	Listen      string
@@ -44,12 +43,8 @@ func (s *Server) Run() {
 	s.pingStop = make(chan struct{})
 	s.StartPinger()
 
-	r := httprouter.New()
-	r.GET("/", func(rw http.ResponseWriter, req *http.Request, params httprouter.Params) {
-		rw.WriteHeader(http.StatusOK)
-		_, _ = rw.Write([]byte("What is a \"Remote Math\" anyway?\n"))
-	})
-	r.Handle(http.MethodConnect, "/", func(rw http.ResponseWriter, req *http.Request, params httprouter.Params) {
+	r := http.NewServeMux()
+	r.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
 		if websocket.IsWebSocketUpgrade(req) {
 			log.Printf("[Websocket] Upgrading connection by '%s' from '%s'\n", req.RemoteAddr, req.Header.Get("Origin"))
 			c, err := upgrader.Upgrade(rw, req, nil)
@@ -66,14 +61,16 @@ func (s *Server) Run() {
 		rw.WriteHeader(http.StatusOK)
 		_, _ = rw.Write([]byte("What is a \"Remote Math\" anyway?\n"))
 	})
-	r.GET("/log/:date/:code", func(rw http.ResponseWriter, req *http.Request, params httprouter.Params) {
-		date := params.ByName("date")
-		code := params.ByName("code")
+
+	r.HandleFunc("/log", func(rw http.ResponseWriter, req *http.Request) {
+		q := req.URL.Query()
+		date := q.Get("date")
+		code := q.Get("code")
 		if !regLogDate.MatchString(date) || !regLogCode.MatchString(code) {
 			rw.WriteHeader(http.StatusNotFound)
 			return
 		}
-		logFile := filepath.Join(s.LogDir, date, strings.ToUpper(code[0:6])+".log")
+		logFile := filepath.Join(s.LogDir, date, strings.ToUpper(code)+".log")
 		if strings.Contains(logFile, "..") || !strings.HasPrefix(logFile, s.LogDir) {
 			rw.WriteHeader(http.StatusNotFound)
 			return
@@ -82,7 +79,15 @@ func (s *Server) Run() {
 	})
 
 	// setup http listener
-	srv := &http.Server{Addr: s.Listen, Handler: r}
+	srv := &http.Server{
+		Addr:              s.Listen,
+		Handler:           r,
+		ReadTimeout:       time.Minute,
+		ReadHeaderTimeout: time.Minute,
+		WriteTimeout:      time.Minute,
+		IdleTimeout:       time.Minute,
+		MaxHeaderBytes:    2500,
+	}
 	log.Printf("[RemoteMath] Hosting Remote Math on '%s'\n", srv.Addr)
 	go func() {
 		err := srv.ListenAndServe()
@@ -96,6 +101,16 @@ func (s *Server) Run() {
 	}()
 	exitReload.ExitReload("RemoteMath", func() {}, func() {
 		close(s.pingStop)
+
+		// close all websockets connections
+		s.mLock.Lock()
+		for _, i := range s.m {
+			_ = i.Close()
+		}
+		s.m = make(map[string]*websocket.Conn)
+		s.mLock.Unlock()
+
+		// close remote math handler
 		s.rm.Close()
 		_ = srv.Shutdown(context.Background())
 	})
