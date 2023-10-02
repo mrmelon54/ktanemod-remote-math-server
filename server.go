@@ -3,6 +3,7 @@ package ktanemod_remote_math_server
 import (
 	"context"
 	"errors"
+	"fmt"
 	exitReload "github.com/MrMelon54/exit-reload"
 	"github.com/gorilla/websocket"
 	"log"
@@ -40,7 +41,7 @@ func (s *Server) Run() {
 	s.rm = NewRemoteMath(random, s.LogDir, s.DebugPuzzle)
 	s.mLock = new(sync.RWMutex)
 	s.m = make(map[string]*websocket.Conn)
-	s.pingStop = make(chan struct{})
+	s.pingStop = make(chan struct{}, 1)
 	s.StartPinger()
 
 	r := http.NewServeMux()
@@ -104,8 +105,11 @@ func (s *Server) Run() {
 
 		// close all websockets connections
 		s.mLock.Lock()
+		fmt.Printf("Closing %d connections\n", len(s.m))
 		for _, i := range s.m {
+			fmt.Printf("Closing connection %s, %s, %s\n", i.LocalAddr(), i.RemoteAddr(), i.Subprotocol())
 			_ = i.Close()
+			fmt.Println("Closed")
 		}
 		s.m = make(map[string]*websocket.Conn)
 		s.mLock.Unlock()
@@ -120,21 +124,23 @@ func (s *Server) StartPinger() {
 	go func() {
 		t := time.NewTicker(5 * time.Second)
 		defer t.Stop()
+	outer:
 		for {
 			select {
 			case <-s.pingStop:
-				return
+				break outer
 			case <-t.C:
-				s.mLock.Lock()
+				s.mLock.RLock()
 				for _, v := range s.m {
 					if v == nil {
 						continue
 					}
 					_ = v.WriteMessage(websocket.TextMessage, []byte("ping"))
 				}
-				s.mLock.Unlock()
+				s.mLock.RUnlock()
 			}
 		}
+		fmt.Println("[Remote Math] Background ping sender stopped")
 	}()
 }
 
@@ -212,9 +218,9 @@ func (s *Server) websocketHandler(c *websocket.Conn) {
 		}
 	}
 	switch state {
-	case 1:
+	case ModuleClient:
 		s.rm.ClosePuzzle(puzzle)
-	case 3:
+	case WebClientPostConnect:
 		puzzle.RemoveWebConn(c)
 	}
 }

@@ -127,18 +127,11 @@ func (r *RemoteMath) ConnectPuzzle(c *websocket.Conn, s string) *Puzzle {
 	// gen new twitch plays auth code
 	var tpCode string
 	if p.twitchPlays {
-	outer:
-		for {
-			tpCode = MakeId(r.rId, 3, "0123456789")
-			for _, i := range p.webConns {
-				if i.tpCode == tpCode {
-					// skip inner loop as the code already exists
-					break
-				}
-				// skip outer loop as the code is free
-				break outer
-			}
+		tpCode = r.MakeTPCode()
+		for p.TPCodeExists(tpCode) {
+			tpCode = r.MakeTPCode()
 		}
+		fmt.Printf("Generated TP code %s\n", tpCode)
 	}
 
 	// add new web conn
@@ -158,6 +151,10 @@ func (r *RemoteMath) ConnectPuzzle(c *websocket.Conn, s string) *Puzzle {
 	}
 
 	return p
+}
+
+func (r *RemoteMath) MakeTPCode() string {
+	return MakeId(r.rId, 3, "0123456789")
 }
 
 // genPuzzleCode generates a new puzzle code

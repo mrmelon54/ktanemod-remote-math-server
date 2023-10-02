@@ -298,6 +298,17 @@ func (p *Puzzle) Kill() {
 	p.webConnLock.RUnlock()
 }
 
+func (p *Puzzle) TPCodeExists(code string) bool {
+	for _, i := range p.webConns {
+		if i.tpCode == code {
+			// code already exists
+			return true
+		}
+	}
+	// code does not exist
+	return false
+}
+
 func mustParseInt(s string) int {
 	n, err := strconv.ParseInt(s, 10, 32)
 	if err != nil {
