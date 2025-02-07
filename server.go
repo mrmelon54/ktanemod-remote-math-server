@@ -96,7 +96,7 @@ func (s *Server) Run() {
 			if errors.Is(err, http.ErrServerClosed) {
 				log.Println("[RemoteMath] The http server shutdown successfully")
 			} else {
-				log.Println("[RemoteMath] Error trying to host the http server: ", err)
+				log.Fatalln("[RemoteMath] Error trying to host the http server: ", err)
 			}
 		}
 	}()
