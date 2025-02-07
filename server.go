@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	exitReload "github.com/MrMelon54/exit-reload"
+	exitReload "github.com/mrmelon54/exit-reload"
 	"github.com/gorilla/websocket"
 	"log"
 	"math/rand"
